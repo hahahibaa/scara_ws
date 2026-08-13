@@ -26,6 +26,8 @@ setup(
             "sim_node = scara_rl.sim_node:main",
             "vision_node = scara_rl.vision_node:main",
             "policy_node = scara_rl.policy_node:main",
+            "policy_bridge = scara_rl.policy_bridge:main",
+            "grasp_node = scara_rl.grasp_node:main",
         ],
     },
 )

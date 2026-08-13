@@ -1,0 +1,34 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    arm_controller:
+      type: position_controllers/JointGroupPositionController
+    z_lift_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+# shoulder_pan / elbow_pan / wrist_roll: unchanged, position interface,
+# already track their commanded positions exactly.
+arm_controller:
+  ros__parameters:
+    joints: [shoulder_pan, elbow_pan, wrist_roll]
+    interface_name: position
+
+# z_lift: gravity-loaded prismatic joint. gz_ros2_control's position
+# interface can't hold it (see scara.urdf comment for why), so this
+# closes the loop itself via the effort interface with real PID gains
+# tuned to counteract the ~4.6N (0.471 kg * g) static load from the
+# quill/wrist assembly hanging below it.
+z_lift_controller:
+  ros__parameters:
+    joints: [z_lift]
+    command_interfaces: [effort]
+    state_interfaces: [position, velocity]
+    gains:
+      z_lift:
+        p: 2000.0
+        i: 200.0
+        d: 100.0
+        i_clamp: 80.0
+    allow_partial_joints_goal: false

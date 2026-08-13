@@ -1,0 +1,138 @@
+<?xml version="1.0" ?>
+<!--
+  Same as ign-gazebo6's built-in worlds/empty.sdf, plus the Sensors system
+  plugin: empty.sdf does not load it, so camera/lidar/etc sensors on any
+  spawned model never render or publish, no matter how they're configured.
+-->
+<sdf version="1.6">
+  <world name="empty">
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <plugin
+      filename="ignition-gazebo-physics-system"
+      name="gz::sim::systems::Physics">
+    </plugin>
+    <plugin
+      filename="ignition-gazebo-user-commands-system"
+      name="gz::sim::systems::UserCommands">
+    </plugin>
+    <plugin
+      filename="ignition-gazebo-scene-broadcaster-system"
+      name="gz::sim::systems::SceneBroadcaster">
+    </plugin>
+    <plugin
+      filename="ignition-gazebo-contact-system"
+      name="gz::sim::systems::Contact">
+    </plugin>
+    <plugin
+      filename="ignition-gazebo-sensors-system"
+      name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.8 0.8 0.8 1</ambient>
+            <diffuse>0.8 0.8 0.8 1</diffuse>
+            <specular>0.8 0.8 0.8 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ============ colour-sort cubes ============
+         Known, asymmetric world positions for the camera axis-orientation
+         check (image-right == world +X, image-up == world +Y, per
+         vision_node.py's pixel_to_world). CUBE_SIZE and COLOR_RGBA match
+         scara_kinematics.py exactly, so vision_node's HSV ranges (tuned
+         against those exact colours) need no changes. Static for now,
+         no grasping yet. -->
+    <model name="cube_red">
+      <static>true</static>
+      <pose>0.32 0.05 0.02 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.04 0.04 0.04</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.04 0.04 0.04</size></box></geometry>
+          <material>
+            <ambient>0.85 0.11 0.13 1</ambient>
+            <diffuse>0.85 0.11 0.13 1</diffuse>
+            <specular>0.85 0.11 0.13 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="cube_green">
+      <static>true</static>
+      <pose>0.08 0.42 0.02 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.04 0.04 0.04</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.04 0.04 0.04</size></box></geometry>
+          <material>
+            <ambient>0.13 0.70 0.24 1</ambient>
+            <diffuse>0.13 0.70 0.24 1</diffuse>
+            <specular>0.13 0.70 0.24 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="cube_blue">
+      <static>true</static>
+      <pose>0.20 -0.05 0.02 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.04 0.04 0.04</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.04 0.04 0.04</size></box></geometry>
+          <material>
+            <ambient>0.12 0.35 0.85 1</ambient>
+            <diffuse>0.12 0.35 0.85 1</diffuse>
+            <specular>0.12 0.35 0.85 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+  </world>
+</sdf>
