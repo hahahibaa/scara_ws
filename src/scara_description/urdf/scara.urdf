@@ -1,0 +1,185 @@
+<?xml version="1.0"?>
+<!--
+  4-DOF SCARA (RRPR) for colour-sorted pick and place.
+
+  Kinematic constants (MUST stay in sync with scara_kinematics.py):
+    COLUMN_H = 0.40   column height, shoulder axis sits on top
+    A1       = 0.25   upper arm length  (shoulder_pan -> elbow_pan)
+    A2       = 0.20   forearm length    (elbow_pan    -> z_lift)
+    QUILL    = 0.10   quill length hanging below the z_lift joint
+    TOOL     = 0.03   suction pad length below wrist_roll
+
+  Joint chain:
+    shoulder_pan  revolute  about +Z at (0, 0, COLUMN_H)
+    elbow_pan     revolute  about +Z at (A1, 0, 0)
+    z_lift        prismatic along +Z at (A2, 0, 0), travel [-0.27, 0]
+    wrist_roll    revolute  about +Z at (0, 0, -QUILL)
+    tool_tip      fixed frame at the suction pad face -- this is the grasp point
+
+  Tool tip height:  z = COLUMN_H - QUILL - TOOL + d3 = 0.27 + d3
+    d3 =  0.00  -> z = 0.27  (clear of everything)
+    d3 = -0.23  -> z = 0.04  (touching the top of a 0.04 m cube on the table)
+    d3 = -0.27  -> z = 0.00  (table surface, lower limit)
+
+  Planar reach:  |A1 - A2| = 0.05  to  A1 + A2 = 0.45
+-->
+<robot name="scara">
+
+  <material name="steel">   <color rgba="0.35 0.37 0.40 1"/></material>
+  <material name="orange">  <color rgba="0.95 0.55 0.10 1"/></material>
+  <material name="darkgrey"><color rgba="0.20 0.20 0.22 1"/></material>
+  <material name="chrome">  <color rgba="0.75 0.76 0.78 1"/></material>
+  <material name="black">   <color rgba="0.08 0.08 0.08 1"/></material>
+
+  <!-- ============ WORLD ANCHOR ============ -->
+  <link name="world"/>
+
+  <joint name="world_fixed" type="fixed">
+    <parent link="world"/>
+    <child  link="base_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ============ BASE COLUMN ============ -->
+  <link name="base_link">
+    <inertial>
+      <origin xyz="0 0 0.20"/>
+      <mass value="8.0"/>
+      <inertia ixx="0.12" ixy="0" ixz="0" iyy="0.12" iyz="0" izz="0.02"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.20"/>
+      <geometry><cylinder radius="0.07" length="0.40"/></geometry>
+      <material name="steel"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.20"/>
+      <geometry><cylinder radius="0.07" length="0.40"/></geometry>
+    </collision>
+  </link>
+
+  <!-- ============ LINK 1 : UPPER ARM (A1 = 0.25) ============ -->
+  <link name="link1">
+    <inertial>
+      <origin xyz="0.125 0 0"/>
+      <mass value="1.2"/>
+      <inertia ixx="0.0012" ixy="0" ixz="0" iyy="0.0070" iyz="0" izz="0.0075"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.125 0 0.015"/>
+      <geometry><box size="0.28 0.07 0.055"/></geometry>
+      <material name="orange"/>
+    </visual>
+    <collision>
+      <origin xyz="0.125 0 0.015"/>
+      <geometry><box size="0.28 0.07 0.055"/></geometry>
+    </collision>
+  </link>
+
+  <joint name="shoulder_pan" type="revolute">
+    <parent link="base_link"/>
+    <child  link="link1"/>
+    <origin xyz="0 0 0.40" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <!-- +/- 135 deg -->
+    <limit lower="-2.356" upper="2.356" effort="60" velocity="3.0"/>
+    <dynamics damping="0.5" friction="0.1"/>
+  </joint>
+
+  <!-- ============ LINK 2 : FOREARM (A2 = 0.20) ============ -->
+  <link name="link2">
+    <inertial>
+      <origin xyz="0.10 0 0"/>
+      <mass value="0.8"/>
+      <inertia ixx="0.0006" ixy="0" ixz="0" iyy="0.0032" iyz="0" izz="0.0034"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.10 0 0.012"/>
+      <geometry><box size="0.23 0.055 0.045"/></geometry>
+      <material name="orange"/>
+    </visual>
+    <collision>
+      <origin xyz="0.10 0 0.012"/>
+      <geometry><box size="0.23 0.055 0.045"/></geometry>
+    </collision>
+  </link>
+
+  <joint name="elbow_pan" type="revolute">
+    <parent link="link1"/>
+    <child  link="link2"/>
+    <origin xyz="0.25 0 0.045" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <!-- +/- 145 deg -->
+    <limit lower="-2.530" upper="2.530" effort="40" velocity="3.0"/>
+    <dynamics damping="0.4" friction="0.1"/>
+  </joint>
+
+  <!-- ============ LINK 3 : QUILL (prismatic Z) ============ -->
+  <link name="link3">
+    <inertial>
+      <origin xyz="0 0 -0.05"/>
+      <mass value="0.35"/>
+      <inertia ixx="0.0004" ixy="0" ixz="0" iyy="0.0004" iyz="0" izz="0.00005"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 -0.05"/>
+      <geometry><cylinder radius="0.016" length="0.10"/></geometry>
+      <material name="chrome"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.05"/>
+      <geometry><cylinder radius="0.016" length="0.10"/></geometry>
+    </collision>
+  </link>
+
+  <joint name="z_lift" type="prismatic">
+    <parent link="link2"/>
+    <child  link="link3"/>
+    <origin xyz="0.20 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-0.27" upper="0.0" effort="80" velocity="0.5"/>
+    <dynamics damping="2.0" friction="0.5"/>
+  </joint>
+
+  <!-- ============ LINK 4 : WRIST / SUCTION PAD ============ -->
+  <link name="link4">
+    <inertial>
+      <origin xyz="0 0 -0.015"/>
+      <mass value="0.12"/>
+      <inertia ixx="0.00002" ixy="0" ixz="0" iyy="0.00002" iyz="0" izz="0.00003"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 -0.015"/>
+      <geometry><cylinder radius="0.022" length="0.03"/></geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.015"/>
+      <geometry><cylinder radius="0.022" length="0.03"/></geometry>
+    </collision>
+  </link>
+
+  <joint name="wrist_roll" type="revolute">
+    <parent link="link3"/>
+    <child  link="link4"/>
+    <origin xyz="0 0 -0.10" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14" upper="3.14" effort="10" velocity="6.0"/>
+    <dynamics damping="0.05" friction="0.02"/>
+  </joint>
+
+  <!-- ============ TOOL TIP : grasp reference frame ============ -->
+  <link name="tool_tip">
+    <inertial>
+      <mass value="0.001"/>
+      <inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/>
+    </inertial>
+  </link>
+
+  <joint name="tool_fixed" type="fixed">
+    <parent link="link4"/>
+    <child  link="tool_tip"/>
+    <origin xyz="0 0 -0.03" rpy="0 0 0"/>
+  </joint>
+
+</robot>
