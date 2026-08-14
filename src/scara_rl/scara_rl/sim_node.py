@@ -4,8 +4,19 @@ Publishes
     /joint_states                 sensor_msgs/JointState
     /overhead_camera/image_raw    sensor_msgs/Image   (top-down RGB)
     /scara/grasped                std_msgs/Bool
+    /scara/grasped_colour         std_msgs/String
 Subscribes
     /scara/joint_command          std_msgs/Float64MultiArray  (4 target positions)
+
+/scara/grasped_colour reports the ACTUAL held colour ("" when not holding
+anything; ground truth: nearest not-yet-placed cube in range, same as
+Gazebo's grasp_node.py) so policy_node can resync its belief if it differs
+from what it was aiming for. This is the SOLE source of truth policy_node
+uses for grasp state -- not correlated with /scara/grasped (Bool), which
+is still published here for any other consumer. A single topic that
+atomically carries both "holding?" and "holding what" removes any
+cross-topic ordering race by construction; an earlier sticky-string design
+still raced (see policy_node.py for why).
 
 Grip and release are automatic and use EXACTLY the thresholds and constraint
 parameters from scara_env.py -- if these drift apart the trained policy will
@@ -21,7 +32,7 @@ import rclpy
 from cv_bridge import CvBridge
 from rclpy.node import Node
 from sensor_msgs.msg import Image, JointState
-from std_msgs.msg import Bool, Float64MultiArray
+from std_msgs.msg import Bool, Float64MultiArray, String
 
 from . import scara_kinematics as K
 from .scara_env import URDF_PATH, SIM_HZ, SUBSTEPS, CONTROL_HZ
@@ -74,6 +85,7 @@ class ScaraSimNode(Node):
         self.pub_js = self.create_publisher(JointState, "/joint_states", 10)
         self.pub_img = self.create_publisher(Image, "/overhead_camera/image_raw", 2)
         self.pub_grasp = self.create_publisher(Bool, "/scara/grasped", 10)
+        self.pub_grasp_colour = self.create_publisher(String, "/scara/grasped_colour", 10)
         self.create_subscription(Float64MultiArray, "/scara/joint_command",
                                  self.on_cmd, 10)
 
@@ -144,6 +156,7 @@ class ScaraSimNode(Node):
         js.velocity = [s[1] for s in st]
         self.pub_js.publish(js)
         self.pub_grasp.publish(Bool(data=self.grip is not None))
+        self.pub_grasp_colour.publish(String(data=self.grip_cube or ""))
 
     def _update_grip(self):
         tip = self.tip_xyz()

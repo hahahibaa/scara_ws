@@ -1,8 +1,9 @@
 """Run the trained PPO policy against the live ROS 2 graph.
 
-Subscribes  /joint_states       sensor_msgs/JointState
-            /detected_objects   scara_msgs/DetectedObjectArray   (from vision)
-            /scara/grasped      std_msgs/Bool
+Subscribes  /joint_states          sensor_msgs/JointState
+            /detected_objects      scara_msgs/DetectedObjectArray   (from vision)
+            /scara/grasped_colour  std_msgs/String   (ground truth, from sim_node.py
+                                                        or grasp_node.py)
 Publishes   /scara/joint_command  std_msgs/Float64MultiArray
 
 The observation vector assembled here must be byte-for-byte the same layout as
@@ -11,6 +12,30 @@ substitution is the cube position: in training it came from the simulator's
 ground truth, here it comes from the colour detector. Once the cube is gripped
 the detector cannot see it (it is underneath the tool), so we fall back to the
 known rigid offset from the tool tip.
+
+self.active (which colour we believe we're working on) is normally set from
+vision when we start reaching for a cube. But the actual grip is granted by
+ground-truth proximity (nearest not-yet-placed cube in range -- see
+sim_node.py / grasp_node.py), which is not guaranteed to be the same colour
+we were aiming for. If belief and reality are allowed to diverge, "done"
+gets marked for the wrong colour: the truly-delivered cube then sits inside
+its own bin where vision filters it out (bin-proximity rejection), the
+colour we're actually still missing is never retargeted, and the whole run
+stalls. So self.active is resynced to /scara/grasped_colour's ground truth
+the moment a grasp is detected, not just when tallying "done" at release --
+that keeps the one-hot observation correct for the entire carry phase too,
+not only the final bookkeeping.
+
+grasp state (self.grasped, and the grasp/release transition) is derived
+SOLELY from /scara/grasped_colour ("" = not holding, else the colour held)
+-- deliberately not cross-checked against the separate /scara/grasped Bool
+topic. An earlier version tried to correlate the two (a sticky colour
+string + a separate boolean edge), which still raced: there is no ordering
+guarantee between independently-published topics, so the colour could be
+read one tick stale relative to the boolean flipping, resyncing to the
+PREVIOUS grasp's colour. A single topic that atomically carries both
+"holding?" and "holding what" in one message removes that race by
+construction -- there is nothing left to correlate.
 """
 
 import time
@@ -19,7 +44,7 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
-from std_msgs.msg import Bool, Float64MultiArray
+from std_msgs.msg import Float64MultiArray, String
 from stable_baselines3 import PPO
 
 from scara_msgs.msg import DetectedObjectArray
@@ -45,7 +70,7 @@ class PolicyNode(Node):
         self.target = None
         self.grasped = False
         self.detections = []
-        self.active = None          # colour we are currently working on
+        self.active = None          # colour we believe we are working on
         self.done = set()
 
         self.pub = self.create_publisher(Float64MultiArray,
@@ -53,7 +78,8 @@ class PolicyNode(Node):
         self.create_subscription(JointState, "/joint_states", self.on_js, 10)
         self.create_subscription(DetectedObjectArray, "/detected_objects",
                                  self.on_det, 10)
-        self.create_subscription(Bool, "/scara/grasped", self.on_grasp, 10)
+        self.create_subscription(String, "/scara/grasped_colour",
+                                 self.on_grasp_colour, 10)
         # create_timer() does not fire reliably on this host; tick() is
         # driven directly off elapsed monotonic time from main() instead.
         self.tick_period = 1.0 / CONTROL_HZ
@@ -76,10 +102,24 @@ class PolicyNode(Node):
                                                o.position.z], np.float32))
                            for o in msg.objects]
 
-    def on_grasp(self, msg):
+    def on_grasp_colour(self, msg):
+        colour = msg.data or None   # "" -> None (not holding anything)
         was = self.grasped
-        self.grasped = bool(msg.data)
-        if was and not self.grasped and self.active is not None:
+        self.grasped = colour is not None
+
+        if not was and self.grasped:
+            # just grasped -- ground-truth proximity picks whichever
+            # not-yet-placed cube the tip is actually nearest to, which is
+            # not guaranteed to be the colour we were aiming for. Resync
+            # belief to reality now (from THIS message alone, not a
+            # separately-tracked value) so the one-hot observation is
+            # correct for the whole carry phase, not just at release.
+            if colour != self.active:
+                self.get_logger().warn(
+                    f"aimed for {self.active}, actually grasped "
+                    f"{colour} -- resyncing")
+                self.active = colour
+        elif was and not self.grasped and self.active is not None:
             # released -- the sim only releases over the correct bin
             self.done.add(self.active)
             self.get_logger().info(

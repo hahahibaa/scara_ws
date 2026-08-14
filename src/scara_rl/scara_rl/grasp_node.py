@@ -4,6 +4,26 @@ release condition) since the trained policy depends on those semantics.
 
 Subscribes  /tf                    (tool_tip world position)
 Publishes   /scara/grasped         std_msgs/msg/Bool
+            /scara/grasped_colour  std_msgs/msg/String
+
+grasp_node grabs whichever not-yet-placed cube the tip is actually closest
+to (ground truth), which is not necessarily the colour policy_node believes
+it is aiming for (that belief comes from vision). /scara/grasped_colour
+reports which colour is ACTUALLY held ("" when not holding anything) so
+policy_node can resync instead of diverging from reality.
+
+/scara/grasped_colour is the SOLE source of truth for grasp state in
+policy_node -- not read alongside /scara/grasped. An earlier version tried
+to correlate this topic with the separate Bool topic (sticky colour +
+boolean transition), which turned out to still race: there is no ordering
+guarantee between two independently-published topics, so the colour string
+could still be read one tick stale relative to the boolean flipping true,
+resyncing to the PREVIOUS grasp's colour instead of the current one. A
+single topic that atomically carries both "holding?" (non-empty) and
+"holding what" (the string itself) in one message removes the race by
+construction: there is nothing left to correlate. /scara/grasped (Bool) is
+still published for any other consumer, but policy_node must not use it
+for state transitions.
 
 Grasp trigger  (from scara_env.py / sim_node.py):
     3D distance(tip, cube) < K.GRASP_RADIUS (0.035 m)
@@ -40,7 +60,7 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.time import Time
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, String
 from tf2_ros import Buffer, TransformListener
 
 from . import scara_kinematics as K
@@ -60,6 +80,8 @@ class GraspNode(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.pub_grasped = self.create_publisher(Bool, "/scara/grasped", 10)
+        self.pub_grasped_colour = self.create_publisher(
+            String, "/scara/grasped_colour", 10)
 
         self.cube_pos = {k: v.copy() for k, v in CUBE_START.items()}
         self.grip = None       # colour currently held, or None
@@ -120,6 +142,7 @@ class GraspNode(Node):
                 self.grip = None
 
         self.pub_grasped.publish(Bool(data=self.grip is not None))
+        self.pub_grasped_colour.publish(String(data=self.grip or ""))
 
 
 def main():
